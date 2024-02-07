@@ -387,7 +387,7 @@ module HLPTick3 =
             List.init count (fun _ -> random.Next(minValue, maxValue + 1))
                 
         let andPos = 
-            List.map2 (fun x y -> (x, y)) (generateRandomList 50 -180 180) (generateRandomList 50 -180 180)
+            List.map2 (fun x y -> (x, y)) (generateRandomList 100 -150 150) (generateRandomList 100 -150 150)
             |> List.map (fun (x,y) -> middleOfSheet + {X=float x; Y=float y})  //generate random position of AND
             |> fromList
         andPos
@@ -398,29 +398,29 @@ module HLPTick3 =
             List.init count (fun _ -> random.Next(minValue, maxValue + 1))
             
         let andPos = 
-            List.map2 (fun x y -> (x, y)) (generateRandomList 50 -180 180) (generateRandomList 50 -180 180)
+            List.map2 (fun x y -> (x, y)) (generateRandomList 100 -150 150) (generateRandomList 100 -150 150)
             |> List.map (fun (x,y) -> middleOfSheet + {X=float x; Y=float y})  //generate random position of AND
             |> fromList
 
         //counstruct bounding boxes of AND and DFF
         let gS = float Constants.gridSize
         
-        let getTopright blPos = blPos + {X = 1.5*gS*(float (2/2)); Y = 1.5*gS}  //height and width of AND2
-        let getBottomleft blPos = blPos - {X = 1.5*gS*(float (2/2)); Y = 1.5*gS}//{X = 1.5*gS; Y = 1.5*gS}
-
+        let getTopright blPos = blPos + {X = 1.5*gS; Y = 0.75*gS}  //height and width of AND2 = 1.5*gS
+        let getBottomleft blPos = blPos - {X = 0.75*gS; Y = 1.5*gS}//{X = 1.5*gS; Y = 1.5*gS}
+                                                                           // added offset to encounter overlap after flip and rotate
         let dffPosTuple =  //fixed at middle of sheet
-            let topright = middleOfSheet + {X = 2.5*gS; Y = 0.5*gS}
-            let bottomleft = middleOfSheet - {X = 0.5*gS; Y = 2.5*gS}
+            let topright = middleOfSheet + {X = 2.5*gS; Y = 1.25*gS} //height and width of DFF = 2.5*gS
+            let bottomleft = middleOfSheet - {X = 1.25*gS; Y = 2.5*gS}
             (topright, bottomleft)
 
         //check if bounding boxes overlap, return true if not overlapping
         let checkOverlap andPos = 
             let andPosTopright = getTopright andPos
             let andPosBottomleft = getBottomleft andPos
-            
-            //let andBoundingbox: BoundingBox = {TopLeft = andPos; W = 1.5*gS; H = 1.5*gS}
-            //let dffBoundingbox: BoundingBox = {TopLeft = middleOfSheet; W = 2.5*gS; H = 2.5*gS}
             not (overlap2D (andPosTopright,andPosBottomleft)  dffPosTuple ) // XYPos tuple: (top right, bottom left)
+
+            //let andBoundingbox: BoundingBox = {TopLeft = andPos; W = 1.5*gS*float 1; H = 1.5*gS}
+            //let dffBoundingbox: BoundingBox = {TopLeft = middleOfSheet; W = 2.5*gS*float 1; H = 2.5*gS}
             //not (overlap2DBox andBoundingbox  dffBoundingbox )
         
         let filtered = filter checkOverlap andPos
