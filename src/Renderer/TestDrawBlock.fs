@@ -367,8 +367,8 @@ module HLPTick3 =
         |> placeSymbol "G1" (GateN(And,2)) andPos
         |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
         |> getOkOrFail
-        |> rotateSymbol "FF1" Degree180
-        |> flipSymbol "G1" SymbolT.FlipHorizontal
+        //|> rotateSymbol "FF1" Degree180
+        //|> flipSymbol "G1" SymbolT.FlipHorizontal
         |> placeWire (portOf "G1" 0) (portOf "FF1" 0)
         //|> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0))
         |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
@@ -385,26 +385,32 @@ module HLPTick3 =
     //Use this test to find any errors in the standard smart routing algorithm (it is not perfect).
 
     let sampleGen = 
-        let andPosBottomleft = 
-            randomInt -150 15 150
-            |> map (fun x -> middleOfSheet + {X=float x; Y=0})  //generate random position of AND 
 
-        
+        let generateRandomList count minValue maxValue =
+            List.init count (fun _ -> random.Next(minValue, maxValue + 1))
+            
+        let andPos = 
+            List.map2 (fun x y -> (x, y)) (generateRandomList 50 -150 150) (generateRandomList 50 -150 150)
+            |> List.map (fun (x,y) -> middleOfSheet + {X=float x; Y=float y})  //generate random position of AND
+            |> fromList
+
         let gS = float Constants.gridSize
- 
-        let getTopright blPos = blPos + {X = 1.5*gS; Y = 1.5*gS}
+        
+        let getTopright blPos = blPos + {X = 1.5*gS; Y = 0.5*gS}//{X = 1.5*gS; Y = 1.5*gS}  //height and width of AND2
+        let getBottomleft blPos = blPos - {X = 0.5*gS; Y = 1.5*gS}//{X = 1.5*gS; Y = 1.5*gS}
 
         let dffPosTuple =  //fixed at middle of sheet
-            let bottomleft = middleOfSheet
-            let toprright = middleOfSheet + {X = 2.5*gS; Y = 2.5*gS}
-            (toprright, bottomleft)
+            let topright = middleOfSheet + {X = 2.5*gS; Y = 1.*gS}
+            let bottomleft = middleOfSheet - {X = 1.*gS; Y = 2.5*gS}
+            (topright, bottomleft)
 
-        let checkOverlap bl = 
-            let andPosTopright = getTopright bl
-            not (overlap2D (bl,andPosTopright)  dffPosTuple ) // XYPos tuple: (top right, bottom left)
+        let checkOverlap andPos = 
+            let andPosTopright = getTopright andPos
+            let andPosBottomleft = getBottomleft andPos
+            not (overlap2D (andPosTopright,andPosBottomleft)  dffPosTuple ) // XYPos tuple: (top right, bottom left)
 
+        let filtered = filter checkOverlap andPos
 
-        let filtered = filter checkOverlap andPosBottomleft
         filtered   //return filtered sample data (AND position)
         
 
@@ -426,34 +432,12 @@ module HLPTick3 =
         |> rotateSymbol "G1" (randomElement rotateList)
         |> flipSymbol "FF1" (randomElement flipList)
 
-        |> placeWire (portOf "G1" 0) (portOf "FF1" 0)
+        |> placeWire (portOf "FF1" 0) (portOf "G1" 0)
         //|> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0))
-        |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
+        |> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0) )
         |> getOkOrFail
     
-        
-    (*
-    let randomCord1 = 
-        randomInt -100 5 100
-        |> map (fun n -> middleOfSheet + {X=float n; Y=0.})
-    let randomCord2 = 
-        randomInt -100 5 100
-        |> map (fun n -> middleOfSheet + {X=float n; Y=0.})
 
-    let modifiedTest 
-    let randomCord1
-    //filter let filter (f: 'a -> bool) (g: Gen<'a>) : Gen<'a> =
-
-    let testWithRF testNum firstSample dispatch =
-            runTestOnSheets
-                "Random Positioned non-overlap AND + DFF: fail on Wire intersect Symbol after random Rotate/Flip"
-                firstSample
-                horizLinePositions  //replace with filtered sample data
-                makeTest1Circuit //replace with new makeRandomTestCircuit with random rotate and flip of componengts
-                (Asserts.failOnWireIntersectsSymbol)
-                dispatch
-            |> recordPositionInTest testNum dispatch
-*)
 //------------------------------------------------------------------------------------------------//
 //-------------------------Example assertions used to test sheets---------------------------------//
 //------------------------------------------------------------------------------------------------//
@@ -552,24 +536,31 @@ module HLPTick3 =
         /// Example test: Horizontally positioned AND + DFF: fail all tests
         let test4 testNum firstSample dispatch =
             runTestOnSheets
-                "Horizontally positioned AND + DFF: fail all tests"
+                "non-overlap AND +DFF without flip/rotate"
                 firstSample
                 sampleGen
-                makeNewTestCircuit
+                makeTest1Circuit
                 Asserts.failOnAllTests
                 dispatch
             |> recordPositionInTest testNum dispatch
 
-        //-----------------------------------------------------------------//
-        //                      To implement!!!!!
-        //-------------------------------------------------------------------//
-        let testWithRF testNum firstSample dispatch =
+        let test5 testNum firstSample dispatch =
             runTestOnSheets
-                "Random Positioned non-overlap AND + DFF: fail on Wire intersect Symbol after random Rotate/Flip"
+                " non-overlap AND + DFF: fail on Wire intersect Symbol after random Rotate/Flip"
                 firstSample
                 sampleGen  //replace with filtered sample data
                 makeNewTestCircuit //replace with new makeRandomTestCircuit with random rotate and flip of componengts
-                (Asserts.failOnWireIntersectsSymbol)
+                Asserts.failOnWireIntersectsSymbol
+                dispatch
+            |> recordPositionInTest testNum dispatch
+
+        let test6 testNum firstSample dispatch =
+            runTestOnSheets
+                "non-overlap AND + DFF with random flip/rotate: fail all"
+                firstSample
+                sampleGen  //replace with filtered sample data
+                makeNewTestCircuit //replace with new makeRandomTestCircuit with random rotate and flip of componengts
+                Asserts.failOnAllTests
                 dispatch
             |> recordPositionInTest testNum dispatch
 
@@ -582,9 +573,9 @@ module HLPTick3 =
                 "Test1", test1 // example
                 "Test2", test2 // example
                 "Test3", test3 // example
-                "Test4", testWithRF //test4 
-                "Test5", fun _ _ _ -> printf "Test5" // dummy test - delete line or replace by real test as needed
-                "Test6", fun _ _ _ -> printf "Test6"
+                "Test4", test4 //test4 
+                "Test5", test5 // 
+                "Test6", test6
                 "Test7", fun _ _ _ -> printf "Test7"
                 "Test8", fun _ _ _ -> printf "Test8"
                 "Next Test Error", fun _ _ _ -> printf "Next Error:" // Go to the nexterror in a test
