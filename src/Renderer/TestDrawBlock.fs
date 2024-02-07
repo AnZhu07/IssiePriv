@@ -91,6 +91,9 @@ module HLPTick3 =
     open Sheet.SheetInterface
     open GenerateData
     open TestLib
+    open SymbolResizeHelpers
+    open Symbol
+    open BlockHelpers
 
     /// create an initial empty Sheet Model 
     let initSheetModel = DiagramMainView.init().Sheet
@@ -237,11 +240,40 @@ module HLPTick3 =
 
         // Rotate a symbol
         let rotateSymbol (symLabel: string) (rotate: Rotation) (model: SheetT.Model) : (SheetT.Model) =
-            failwithf "Not Implemented"
+            let symbols = model.Wire.Symbol.Symbols
+            let getSym = 
+                mapValues symbols
+                |> Array.tryFind (fun sym -> caseInvariantEqual sym.Component.Label symLabel)
+                |> function | Some x -> Ok x | None -> Error "Can't find symbol with label '{symLabel}'"
+            let syms = getSym 
+
+            match syms with 
+            |Ok sym -> 
+                let rotatedSymbol = rotateSymbol rotate sym // rotateSymbol given rotation and symbol(DrawModelType.SymbolT.Symbol)
+                model
+                |> Optic.set (symbolModel_ >-> SymbolT.symbolOf_ rotatedSymbol.Id ) rotatedSymbol
+                |> SheetUpdate.updateBoundingBoxes
+
+            |Error err -> model 
+            //update rotated symbol to Model return type = SheetT.Model
 
         // Flip a symbol
         let flipSymbol (symLabel: string) (flip: SymbolT.FlipType) (model: SheetT.Model) : (SheetT.Model) =
-            failwithf "Not Implemented"
+            let symbols = model.Wire.Symbol.Symbols
+            let getSym = 
+                mapValues symbols
+                |> Array.tryFind (fun sym -> caseInvariantEqual sym.Component.Label symLabel)
+                |> function | Some x -> Ok x | None -> Error "Can't find symbol with label '{symLabel}'"
+            let syms = getSym 
+
+            match syms with 
+            |Ok sym -> 
+                let rotatedSymbol = flipSymbol flip sym // rotateSymbol given rotation and symbol(DrawModelType.SymbolT.Symbol)
+                model
+                |> Optic.set (symbolModel_ >-> SymbolT.symbolOf_ rotatedSymbol.Id ) rotatedSymbol
+                |> SheetUpdate.updateBoundingBoxes
+
+            |Error err -> model 
 
         /// Add a (newly routed) wire, source specifies the Output port, target the Input port.
         /// Return an error if either of the two ports specified is invalid, or if the wire duplicates and existing one.
@@ -334,12 +366,94 @@ module HLPTick3 =
         initSheetModel
         |> placeSymbol "G1" (GateN(And,2)) andPos
         |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
-        |> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0))
+        |> getOkOrFail
+        |> rotateSymbol "FF1" Degree180
+        |> flipSymbol "G1" SymbolT.FlipHorizontal
+        |> placeWire (portOf "G1" 0) (portOf "FF1" 0)
+        //|> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0))
         |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
         |> getOkOrFail
 
+    //Create sample data in a Gen<'a> type to test routing between two ports on two different components. 
+    //This will be as in the examples but with the 2nd component placed anywhere around the first component 
+    //using a rectangular 2D grid created from samples using GenerateData.product.
+    //Choose the resolution of the grid small enough to find problems and large enough so that the number of repeated
+    // similar errors found is small and the test code executes fast.
+    //Filter the position samples according to whether the two components overlap (filter such cases out - 
+    //there is a suitable GenerateData.filter function).
+    //Have as an assertion something where a sheet falls if any wire segment overlaps a symbol
+    //Use this test to find any errors in the standard smart routing algorithm (it is not perfect).
+
+    let sampleGen = 
+        let andPosBottomleft = 
+            randomInt -150 15 150
+            |> map (fun x -> middleOfSheet + {X=float x; Y=0})  //generate random position of AND 
+
+        
+        let gS = float Constants.gridSize
+ 
+        let getTopright blPos = blPos + {X = 1.5*gS; Y = 1.5*gS}
+
+        let dffPosTuple =  //fixed at middle of sheet
+            let bottomleft = middleOfSheet
+            let toprright = middleOfSheet + {X = 2.5*gS; Y = 2.5*gS}
+            (toprright, bottomleft)
+
+        let checkOverlap bl = 
+            let andPosTopright = getTopright bl
+            not (overlap2D (bl,andPosTopright)  dffPosTuple ) // XYPos tuple: (top right, bottom left)
 
 
+        let filtered = filter checkOverlap andPosBottomleft
+        filtered   //return filtered sample data (AND position)
+        
+
+    let makeNewTestCircuit (andPos:XYPos) =
+
+        let randomElement list =
+            let index = random.Next(0, List.length list)
+            List.item index list
+        let rotateList = [Degree0 ;Degree90 ;Degree180 ;Degree270]
+        let flipList = [SymbolT.FlipHorizontal;SymbolT.FlipVertical]
+
+        initSheetModel
+        |> placeSymbol "G1" (GateN(And,2)) andPos
+        |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
+        |> getOkOrFail
+        
+        |> rotateSymbol "FF1" (randomElement rotateList)
+        |> flipSymbol "G1" (randomElement flipList)
+        |> rotateSymbol "G1" (randomElement rotateList)
+        |> flipSymbol "FF1" (randomElement flipList)
+
+        |> placeWire (portOf "G1" 0) (portOf "FF1" 0)
+        //|> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0))
+        |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
+        |> getOkOrFail
+    
+        
+    (*
+    let randomCord1 = 
+        randomInt -100 5 100
+        |> map (fun n -> middleOfSheet + {X=float n; Y=0.})
+    let randomCord2 = 
+        randomInt -100 5 100
+        |> map (fun n -> middleOfSheet + {X=float n; Y=0.})
+
+    let modifiedTest 
+    let randomCord1
+    //filter let filter (f: 'a -> bool) (g: Gen<'a>) : Gen<'a> =
+
+    let testWithRF testNum firstSample dispatch =
+            runTestOnSheets
+                "Random Positioned non-overlap AND + DFF: fail on Wire intersect Symbol after random Rotate/Flip"
+                firstSample
+                horizLinePositions  //replace with filtered sample data
+                makeTest1Circuit //replace with new makeRandomTestCircuit with random rotate and flip of componengts
+                (Asserts.failOnWireIntersectsSymbol)
+                dispatch
+            |> recordPositionInTest testNum dispatch
+*)
 //------------------------------------------------------------------------------------------------//
 //-------------------------Example assertions used to test sheets---------------------------------//
 //------------------------------------------------------------------------------------------------//
@@ -440,9 +554,22 @@ module HLPTick3 =
             runTestOnSheets
                 "Horizontally positioned AND + DFF: fail all tests"
                 firstSample
-                horizLinePositions
-                makeTest1Circuit
+                sampleGen
+                makeNewTestCircuit
                 Asserts.failOnAllTests
+                dispatch
+            |> recordPositionInTest testNum dispatch
+
+        //-----------------------------------------------------------------//
+        //                      To implement!!!!!
+        //-------------------------------------------------------------------//
+        let testWithRF testNum firstSample dispatch =
+            runTestOnSheets
+                "Random Positioned non-overlap AND + DFF: fail on Wire intersect Symbol after random Rotate/Flip"
+                firstSample
+                sampleGen  //replace with filtered sample data
+                makeNewTestCircuit //replace with new makeRandomTestCircuit with random rotate and flip of componengts
+                (Asserts.failOnWireIntersectsSymbol)
                 dispatch
             |> recordPositionInTest testNum dispatch
 
@@ -455,7 +582,7 @@ module HLPTick3 =
                 "Test1", test1 // example
                 "Test2", test2 // example
                 "Test3", test3 // example
-                "Test4", test4 
+                "Test4", testWithRF //test4 
                 "Test5", fun _ _ _ -> printf "Test5" // dummy test - delete line or replace by real test as needed
                 "Test6", fun _ _ _ -> printf "Test6"
                 "Test7", fun _ _ _ -> printf "Test7"
